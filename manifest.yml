@@ -1,0 +1,6 @@
+applications:
+- name: bluemix-pi
+  host: bluemix-pi
+  memory: 128M
+  services:
+    - iot-python
