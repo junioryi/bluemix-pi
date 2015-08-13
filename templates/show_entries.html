@@ -9,6 +9,9 @@
         <dd><input type=submit value=Share>
       </dl>
     </form>
+    <form action="{{ url_for('take_picture') }}" method=post>
+      <button name="take picture" value=""> Take Picture </button>
+    </form>
   <ul class=entries>
   {% for entry in entries %}
     <li><h2>{{ entry.title }}</h2>{{ entry.text|safe }}
