@@ -14,21 +14,41 @@ DATABASE = './server.db'
 DEBUG = True
 SECRET_KEY = 'development key'
 
-# Server env
+client = None
+
+def myCommandCallback(cmd):
+    print "----- Got Command -----"
+    print "Event: " + cmd.event
+    print "Data : " + cmd.data
+
+# Use bluemix provide services
 try:
     vcap = json.loads(os.getenv("VCAP_SERVICES"))
     deviceId = os.getenv("DEVICE_ID")
-except Exception :
-    deviceId = "0000"
+    port = int(os.getenv("VCAP_APP_PORT"))
+
+    options = {
+        "org": vcap["iotf-service"][0]["credentials"]["org"],
+        "id": vcap["iotf-service"][0]["credentials"]["iotCredentialsIdentifier"],
+        "auth-metho": "apikey",
+        "auth-key": vcap["iotf-service"][0]["credentials"]["apikey"],
+        "auth-token": vcap["iotf-service"][0]["credentials"]["apiToken"]
+    }
+    client = ibmiotf.application.Client(options)
+    client.connect()
+
+    client.deviceEventCallback = myCommandCallback
+    client.subscribeToDeviceEvents()
+
+except Exception as e:
+    print "Not on bluemix"
+    print e 
+    port = 5000
 
 
 # Create the application
 app = Flask(__name__)
 app.config.from_object(__name__)
-if os.getenv("VCAP_APP_PORT"):
-    port = int(os.getenv("VCAP_APP_PORT"))
-else:
-    port = 5000
 
 def connect_db():
     return sqlite3.connect(app.config['DATABASE'])
@@ -61,6 +81,16 @@ def add_entry():
             [request.form['title'], request.form['text']])
     g.db.commit()
     flash('New entry was posted.')
+    return redirect(url_for('show_entries'))
+
+@app.route('/take_picutre', methods=['POST'])
+def take_picture():
+    if not client:
+        flash('Not connect to client, cannot take picture')
+        print "Not connect to client"
+        return redirect(url_for('show_entries'))
+    myData = {}
+    client.publishCommand("raspberrypi", options["deviceId"], "take picture", myData)
     return redirect(url_for('show_entries'))
 
 if __name__ == '__main__':
