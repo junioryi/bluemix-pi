@@ -3,12 +3,20 @@ import os, json
 import ibmiotf.application
 import uuid
 
+import picamera
+
+camera = picamera.PiCamera()
+picture_index = 0
+
 client = None
 
 def myCommandCallback(cmd):
     print "----- Got command -----"
     print cmd.event
     print cmd.data
+    if cmd.event == "take picture":
+        camera.capture(str(picture_index)+'.jpg')
+        picture_index += 1   
 
 try:
     options = ibmiotf.application.ParseConfigFile("/home/pi/device.cfg")
