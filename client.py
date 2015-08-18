@@ -10,11 +10,13 @@ import random, string
 import math
 
 from time import sleep
+from PIL import Image
 
 picture_index = 0
-
 packet_size = 3000
 
+# save the returning pictures
+pictures = {}
 client = None
 
 ##### Helper function #####
@@ -52,6 +54,44 @@ def publishEncodedImage(encoded):
         start += packet_size
         pos += 1
 
+def reconstructPicture(chuck):
+    # 
+    name  = chuck["pic_id"]
+    pos   = chuck["pos"]
+    data  = chuck["data"]
+    num_p = int(chuck["size"])
+
+    # Create image dict if first time receive this image
+    if not pictures.has_key( name ):
+        pictures[ name ] = {
+                "count": 0,
+                "total": num_p,
+                "pieces": {},
+                "pic_id": name
+        }
+        # save part of image in pieces at "pos"
+        pictures[ name ]["pieces"][ pos ] = data
+    else:
+        # Not the first time receive this image
+        pictures[ name ]["pieces"][ pos ] = data
+        pictures[ name ]["count"] += 1
+
+        if pictures[ name ]["count"] == num_p:
+            print num_p
+            raw = ''.join(
+                    pictures[ name ]["pieces"][ part ] for part in range(num_p+1)
+            )
+            with open("temp_img.png", "wb") as image_file:
+                #img_str = base64.b64encode(image_file.read())
+                image_file.write(raw.decode('base64'))
+            im = Image.open("temp_img.png")
+            im.show()
+
+
+
+
+
+
 ###########################
 
 def myCommandCallback(cmd):
@@ -86,6 +126,7 @@ def myCommandCallback(cmd):
     elif cmd.event == "return pic":
         data = json.loads(cmd.data)
         print "The " + str(data["pos"]) + " portion of picture."
+        reconstructPicture(data)
 
 
 try:
@@ -99,9 +140,10 @@ try:
     client.subscribeToDeviceEvents(event="return pic")
     #client.subscribeToDeviceEvents()
 
+    print "IBM iot raspberry client server start listening."
     while True:
         time.sleep(1)
 
-except ibmiotf.ConnectionException  as e:
+except ibmiotf.ConnectionException as e:
     print e
 
