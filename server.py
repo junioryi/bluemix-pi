@@ -1,108 +1,99 @@
-from flask import Flask, redirect
+from flask import Flask,redirect
 from flask import render_template
-from flask import request 
-from flask import g, url_for, abort, flash
-
-import sqlite3
-
+from flask import request
 import os, json
+import time
 import ibmiotf.application
-from contextlib import closing
-
-# Configuration
-DATABASE = './server.db'
-DEBUG = True
-SECRET_KEY = 'development key'
 
 client = None
+error = ""
 
 def myCommandCallback(cmd):
-    print "----- Got Command -----"
-    print "Event: " + cmd.event
-    print "Data : " + cmd.data
+    print "----- Receive command -----"
+    print cmd.event
+    print cmd.data
 
-# Use bluemix provide services
+
+# vcap for testing 
+"""
+vcap = {
+        "iotf-service": [{
+            "name": "iot-python",
+            "label": "iotf-service",
+            "plan": "iotf-service-free",
+            "credentials": {
+                "iotCredentialsIdentifier": "a2g6k39sl6r5",
+                "mqtt_host": "yd3lzz.messaging.internetofthings.ibmcloud.com",
+                "mqtt_u_port": 1883,
+                "mqtt_s_port": 8883,
+                "base_uri": "https://yd3lzz.internetofthings.ibmcloud.com:443/api/v0001",
+                "http_host": "yd3lzz.internetofthings.ibmcloud.com",
+                "org": "yd3lzz",
+                "apiKey": "a-yd3lzz-5pukcgmf52",
+                "apiToken": "hBk1wcnjqkPzy?HHFt"
+            }
+        }]  
+}
+
+deviceId = "b827eb94758d"
+options = {
+    "org": vcap["iotf-service"][0]["credentials"]["org"],
+    "id": vcap["iotf-service"][0]["credentials"]["iotCredentialsIdentifier"],
+    "auth-method": "apikey",
+    "auth-key": vcap["iotf-service"][0]["credentials"]["apiKey"],
+    "auth-token": vcap["iotf-service"][0]["credentials"]["apiToken"]
+}
+options["deviceId"] = options["id"]
+options["id"] = "aaa" + options["id"]
+client = ibmiotf.application.Client(options)
+client.connect()
+
+client.deviceEventCallback = myCommandCallback
+client.subscribeToDeviceEvents()
+
+"""
 try:
     vcap = json.loads(os.getenv("VCAP_SERVICES"))
     deviceId = os.getenv("DEVICE_ID")
-    port = int(os.getenv("VCAP_APP_PORT"))
-
     options = {
         "org": vcap["iotf-service"][0]["credentials"]["org"],
         "id": vcap["iotf-service"][0]["credentials"]["iotCredentialsIdentifier"],
-        "auth-metho": "apikey",
-        "auth-key": vcap["iotf-service"][0]["credentials"]["apikey"],
+        "auth-method": "apikey",
+        "auth-key": vcap["iotf-service"][0]["credentials"]["apiKey"],
         "auth-token": vcap["iotf-service"][0]["credentials"]["apiToken"]
     }
     client = ibmiotf.application.Client(options)
     client.connect()
 
     client.deviceEventCallback = myCommandCallback
-    client.subscribeToDeviceEvents()
+    client.subscribeToDeviceEvents(event="input")
 
+except ibmiotf.ConnectionException as e:
+    print e
+    error = str(e)
 except Exception as e:
-    print "Not on bluemix"
-    print e 
-    port = 5000
+    print e
+    error = str(e)
 
-
-# Create the application
 app = Flask(__name__)
-app.config.from_object(__name__)
 
-def connect_db():
-    return sqlite3.connect(app.config['DATABASE'])
-
-def init_db():
-    with closing(connect_db()) as db:
-        with app.open_resource('schema.sql', mode='r') as f:
-            db.cursor().executescript(f.read())
-        db.commit()
-
-@app.before_request
-def before_request():
-    g.db = connect_db()
-
-@app.teardown_request
-def teardown_request(exception):
-    db = getattr(g, 'db', None)
-    if db is not None:
-        db.close()
+if os.getenv("VCAP_APP_PORT"):
+    port = int(os.getenv("VCAP_APP_PORT"))
+else:
+    port = 8080
 
 @app.route('/')
-def show_entries():
-    cur = g.db.execute('select title, text from entries order by id desc')
-    entries = [dict(title=row[0], text=row[1]) for row in cur.fetchall()]
-    return render_template('show_entries.html', entries=entries)
+def hello():
+    entries = []
+    return render_template('index2.html', entries=entries)
 
-@app.route('/add', methods=['POST'])
-def add_entry():
-    g.db.execute('insert into entries (title, text) values (?, ?)',
-            [request.form['title'], request.form['text']])
-    g.db.commit()
-    flash('New entry was posted.')
-    return redirect(url_for('show_entries'))
-
-@app.route('/take_picutre', methods=['POST'])
+@app.route('/takePicture', methods=['POST'])
 def take_picture():
-    if not client:
-        flash('Not connect to client, cannot take picture')
-        print "Not connect to client"
-        return redirect(url_for('show_entries'))
     myData = {}
-    client.publishCommand("raspberrypi", options["deviceId"], "take picture", myData)
-    return redirect(url_for('show_entries'))
+    client.publishEvent("raspberrypi", deviceId, "take picture", "json", myData)
+    return redirect("/", code=302)
 
 if __name__ == '__main__':
-    if not os.path.isfile('server.db'):
-        init_db()
+    app.config['DEBUG'] = True
+    print "starting server"
     app.run(host='0.0.0.0', port=port)
-
-
-
-
-
-
-
-
-
